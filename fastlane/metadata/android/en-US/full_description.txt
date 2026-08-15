@@ -1,0 +1,17 @@
+Get your XPENG's battery, range, charging, and lock state into Home Assistant without any cloud account or API key.
+
+XPENG offers no official local API, so this unofficial community app runs on a spare Android phone, opens the official XPENG app, reads the dashboard values you can already see through an Android Accessibility Service, and publishes them to your own MQTT broker with Home Assistant auto-discovery.
+
+Read-only by design: the app contains no vehicle-control actions of any kind. The accessibility service is restricted to the XPENG app's package, telemetry goes only to the broker you configure, credentials are stored encrypted, and there are no analytics or third-party servers.
+
+Features:
+
+* Battery %, estimated range, charging and fully-charged state, door lock state, charge limit, interior temperature, and charge status
+* Retained MQTT state with availability and Last Will, QoS 1
+* Home Assistant MQTT auto-discovery, including a Refresh button for on-demand collection
+* Scheduled background collection (15-minute minimum) plus manual "Collect Now"
+* Local test publish to verify MQTT settings without touching the XPENG app
+
+Requires: a dedicated Android 11+ phone with the official XPENG app installed and set to English, and an MQTT 3.1.1 broker.
+
+Not affiliated with or endorsed by XPENG.
