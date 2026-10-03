@@ -12,7 +12,7 @@ on:
       - 'gradle.properties'
       - 'gradlew'
       - 'gradlew.bat'
-      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 concurrency:
