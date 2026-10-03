@@ -2,10 +2,13 @@ package com.schwoi.xpengbridge;
 
 import android.content.Context;
 import android.os.PowerManager;
+import android.util.Log;
 import java.time.Instant;
 import java.util.List;
 
 public final class CollectionRunner {
+    private static final String TAG = "CollectionRunner";
+
     private CollectionRunner() {}
 
     @SuppressWarnings("deprecation")
@@ -25,8 +28,7 @@ public final class CollectionRunner {
                 throw new IllegalStateException(
                         "Timed out waiting for the XPENG dashboard. Keep the phone unlocked.");
             Telemetry telemetry = new TelemetryParser().parse(nodes, Instant.now());
-            new MqttPublisher(new PahoMqttTransport())
-                    .publishTelemetry(new SettingsRepository(context).load(), telemetry);
+            publishConfigured(context, telemetry);
             return telemetry;
         } finally {
             if (wake.isHeld()) wake.release();
@@ -37,7 +39,27 @@ public final class CollectionRunner {
         Telemetry telemetry = new Telemetry(Instant.now().toString(), 73, 321, "km", "WLTP",
                 false, false, true, 80, 21, 0, "local test", "Not charging",
                 "Generated locally", "fresh");
-        new MqttPublisher(new PahoMqttTransport())
-                .publishTelemetry(new SettingsRepository(context).load(), telemetry);
+        publishConfigured(context, telemetry);
+    }
+
+    static void publishConfigured(Context context, Telemetry telemetry) throws Exception {
+        List<MqttSettings> brokers = new SettingsRepository(context).loadAll();
+        Exception firstFailure = null;
+        int published = 0;
+
+        for (MqttSettings broker : brokers) {
+            try {
+                new MqttPublisher(new PahoMqttTransport()).publishTelemetry(broker, telemetry);
+                published++;
+            } catch (Exception e) {
+                if (firstFailure == null) firstFailure = e;
+            }
+        }
+
+        if (published == 0 && firstFailure != null) throw firstFailure;
+        if (published < brokers.size()) {
+            Log.w(TAG, "Telemetry published to " + published + " of " + brokers.size()
+                    + " configured MQTT brokers");
+        }
     }
 }

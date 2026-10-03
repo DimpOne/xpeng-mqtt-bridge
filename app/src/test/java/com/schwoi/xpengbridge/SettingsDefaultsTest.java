@@ -14,6 +14,7 @@ public class SettingsDefaultsTest {
         assertEquals("xpeng/vehicle", s.baseTopic);
         assertEquals("homeassistant", s.discoveryPrefix);
         assertEquals(15, s.intervalMinutes);
+        assertFalse(s.isConfigured());
     }
 
     @Test public void emptyHostFailsValidation() {
@@ -22,6 +23,14 @@ public class SettingsDefaultsTest {
     }
 
     @Test public void intervalIsClampedToAndroidMinimum() {
-        assertEquals(15, new MqttSettings("h", 1, false, "", "", "b", "d", 2).intervalMinutes);
+        assertEquals(15,
+                new MqttSettings("h", 1, false, "", "", "b", "d", 2).intervalMinutes);
+    }
+
+    @Test public void configuredBrokerRequiresOnlyANonBlankHostForEnablement() {
+        assertTrue(new MqttSettings(" broker ", 1883, false, "", "",
+                "xpeng/vehicle", "homeassistant", 15).isConfigured());
+        assertFalse(new MqttSettings("   ", 1883, false, "", "",
+                "xpeng/vehicle", "homeassistant", 15).isConfigured());
     }
 }

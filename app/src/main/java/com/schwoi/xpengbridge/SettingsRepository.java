@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKey;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public final class SettingsRepository {
@@ -40,18 +42,60 @@ public final class SettingsRepository {
                 prefs.getInt("interval_minutes", d.intervalMinutes));
     }
 
+    public MqttSettings loadSecondary() {
+        MqttSettings primary = load();
+        return new MqttSettings(
+                prefs.getString("secondary_host", ""),
+                prefs.getInt("secondary_port", 1883),
+                prefs.getBoolean("secondary_tls", false),
+                prefs.getString("secondary_username", ""),
+                prefs.getString("secondary_password", ""),
+                primary.baseTopic,
+                primary.discoveryPrefix,
+                primary.intervalMinutes);
+    }
+
+    public List<MqttSettings> loadAll() {
+        ArrayList<MqttSettings> result = new ArrayList<>();
+        MqttSettings primary = load();
+        result.add(primary);
+        MqttSettings secondary = loadSecondary();
+        if (secondary.isConfigured()) result.add(secondary);
+        return result;
+    }
+
     public void save(MqttSettings s) {
-        s.validate();
-        prefs.edit()
-                .putString("host", s.host)
-                .putInt("port", s.port)
-                .putBoolean("tls", s.tls)
-                .putString("username", s.username)
-                .putString("password", s.password)
-                .putString("base_topic", s.baseTopic)
-                .putString("discovery_prefix", s.discoveryPrefix)
-                .putInt("interval_minutes", s.intervalMinutes)
-                .apply();
+        save(s, loadSecondary());
+    }
+
+    public void save(MqttSettings primary, MqttSettings secondary) {
+        primary.validate();
+        if (secondary != null && secondary.isConfigured()) secondary.validate();
+
+        SharedPreferences.Editor editor = prefs.edit()
+                .putString("host", primary.host)
+                .putInt("port", primary.port)
+                .putBoolean("tls", primary.tls)
+                .putString("username", primary.username)
+                .putString("password", primary.password)
+                .putString("base_topic", primary.baseTopic)
+                .putString("discovery_prefix", primary.discoveryPrefix)
+                .putInt("interval_minutes", primary.intervalMinutes);
+
+        if (secondary == null || !secondary.isConfigured()) {
+            editor.remove("secondary_host")
+                    .remove("secondary_port")
+                    .remove("secondary_tls")
+                    .remove("secondary_username")
+                    .remove("secondary_password");
+        } else {
+            editor.putString("secondary_host", secondary.host)
+                    .putInt("secondary_port", secondary.port)
+                    .putBoolean("secondary_tls", secondary.tls)
+                    .putString("secondary_username", secondary.username)
+                    .putString("secondary_password", secondary.password);
+        }
+        editor.apply();
     }
 
     /** Stable random suffix for MQTT client IDs; avoids exposing hardware identifiers. */
