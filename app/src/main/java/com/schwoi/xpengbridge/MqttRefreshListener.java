@@ -2,6 +2,8 @@ package com.schwoi.xpengbridge;
 
 import android.content.Context;
 import android.util.Log;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -16,7 +18,7 @@ public final class MqttRefreshListener implements AutoCloseable {
     private static final String TAG = "MqttRefreshListener";
     private final Context context;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-    private volatile MqttClient client;
+    private final List<MqttClient> clients = new ArrayList<>();
     private volatile boolean closed;
 
     public MqttRefreshListener(Context context) {
@@ -35,51 +37,74 @@ public final class MqttRefreshListener implements AutoCloseable {
     }
 
     private void ensureConnected() {
-        if (closed || (client != null && client.isConnected())) return;
-        disconnect();
-        MqttClient next = null;
-        try {
-            SettingsRepository repo = new SettingsRepository(context);
-            MqttSettings mqtt = repo.load();
-            mqtt.validate();
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setMqttVersion(MqttConnectOptions.MQTT_VERSION_3_1_1);
-            options.setCleanSession(true);
-            options.setConnectionTimeout(10);
-            options.setKeepAliveInterval(30);
-            if (!mqtt.username.isEmpty()) options.setUserName(mqtt.username);
-            if (!mqtt.password.isEmpty()) options.setPassword(mqtt.password.toCharArray());
-            String uri = (mqtt.tls ? "ssl" : "tcp") + "://" + mqtt.host + ":" + mqtt.port;
-            next = new MqttClient(uri, "xpeng-refresh-" + repo.clientSuffix(), new MemoryPersistence());
-            next.setCallback(new MqttCallback() {
-                @Override public void connectionLost(Throwable cause) { }
+        if (closed) return;
 
-                @Override public void messageArrived(String topic, MqttMessage message) {
-                    if (RefreshCommand.matches(mqtt, topic, message.getPayload())) {
-                        CollectionScheduler.requestRefresh(context);
-                    }
-                }
-
-                @Override public void deliveryComplete(IMqttDeliveryToken token) { }
-            });
-            next.connect(options);
-            next.subscribe(RefreshCommand.topic(mqtt), 1);
-            client = next;
-        } catch (Exception e) {
-            // Never log settings or credentials; the class name is enough for triage.
-            Log.w(TAG, "Refresh listener connect failed: " + e.getClass().getSimpleName());
-            if (next != null) {
-                try { next.close(); } catch (Exception ignored) { }
+        SettingsRepository repo = new SettingsRepository(context);
+        List<MqttSettings> brokers = repo.loadAll();
+        synchronized (clients) {
+            if (clients.size() == brokers.size()
+                    && !clients.isEmpty()
+                    && clients.stream().allMatch(MqttClient::isConnected)) {
+                return;
             }
+        }
+
+        disconnect();
+        int index = 0;
+        for (MqttSettings mqtt : brokers) {
+            MqttClient next = null;
+            try {
+                mqtt.validate();
+                MqttConnectOptions options = new MqttConnectOptions();
+                options.setMqttVersion(MqttConnectOptions.MQTT_VERSION_3_1_1);
+                options.setCleanSession(true);
+                options.setConnectionTimeout(10);
+                options.setKeepAliveInterval(30);
+                if (!mqtt.username.isEmpty()) options.setUserName(mqtt.username);
+                if (!mqtt.password.isEmpty()) options.setPassword(mqtt.password.toCharArray());
+
+                String uri = (mqtt.tls ? "ssl" : "tcp") + "://" + mqtt.host + ":" + mqtt.port;
+                final MqttSettings broker = mqtt;
+                next = new MqttClient(uri,
+                        "xpeng-refresh-" + repo.clientSuffix() + "-" + index,
+                        new MemoryPersistence());
+                next.setCallback(new MqttCallback() {
+                    @Override public void connectionLost(Throwable cause) { }
+
+                    @Override public void messageArrived(String topic, MqttMessage message) {
+                        if (RefreshCommand.matches(broker, topic, message.getPayload())) {
+                            CollectionScheduler.requestRefresh(context);
+                        }
+                    }
+
+                    @Override public void deliveryComplete(IMqttDeliveryToken token) { }
+                });
+                next.connect(options);
+                next.subscribe(RefreshCommand.topic(mqtt), 1);
+                synchronized (clients) {
+                    clients.add(next);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Refresh listener connect failed for broker "
+                        + (index + 1) + ": " + e.getClass().getSimpleName());
+                if (next != null) {
+                    try { next.close(); } catch (Exception ignored) { }
+                }
+            }
+            index++;
         }
     }
 
     private void disconnect() {
-        MqttClient current = client;
-        client = null;
-        if (current == null) return;
-        try { if (current.isConnected()) current.disconnect(); } catch (Exception ignored) { }
-        try { current.close(); } catch (Exception ignored) { }
+        List<MqttClient> current;
+        synchronized (clients) {
+            current = new ArrayList<>(clients);
+            clients.clear();
+        }
+        for (MqttClient client : current) {
+            try { if (client.isConnected()) client.disconnect(); } catch (Exception ignored) { }
+            try { client.close(); } catch (Exception ignored) { }
+        }
     }
 
     @Override
