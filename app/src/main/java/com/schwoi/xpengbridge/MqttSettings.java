@@ -7,7 +7,7 @@ public final class MqttSettings {
 
     public MqttSettings(String host, int port, boolean tls, String username, String password,
                         String baseTopic, String discoveryPrefix, int intervalMinutes) {
-        this.host = host.trim();
+        this.host = host == null ? "" : host.trim();
         this.port = port;
         this.tls = tls;
         this.username = username == null ? "" : username;
@@ -20,6 +20,10 @@ public final class MqttSettings {
     public static String normalizeTopic(String topic) {
         if (topic == null) return "";
         return topic.trim().replaceAll("^/+|/+$", "");
+    }
+
+    public boolean isConfigured() {
+        return !host.isEmpty();
     }
 
     public void validate() {
