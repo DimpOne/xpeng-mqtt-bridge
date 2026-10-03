@@ -39,13 +39,24 @@ The phone must be able to render the XPENG app on screen: use no secure lock scr
 
 ## Set up (5 minutes)
 
-1. **Open the app** and enter your broker host, port, and (optional) username/password. Set the base topic (default `xpeng/vehicle`), Home Assistant discovery prefix (default `homeassistant`), and interval. Tap **Save & Schedule**.
+1. **Open the app** and enter your primary broker host, port, and (optional) username/password. You may also configure a secondary broker; the same retained state and Home Assistant discovery payloads are published independently to both. Set the base topic (default `xpeng/vehicle`), Home Assistant discovery prefix (default `homeassistant`), and interval. Tap **Save & Schedule**.
 2. Tap **Publish Local Test (No XPENG)**. If your broker settings are right, a synthetic vehicle appears in Home Assistant within seconds — this verifies MQTT and discovery without touching the XPENG app.
 3. Tap **Open Accessibility Settings** and enable **XPENG MQTT Bridge**. The service declaration and a runtime check restrict it to reading the XPENG app only.
 4. Tap **Collect Now**. The bridge launches the XPENG app, waits up to 30 seconds for the dashboard, and publishes real telemetry.
 5. Optionally tap **Test Automation in 1 Minute** and turn the screen off (don't securely lock it) to verify the scheduled background path works on your phone.
 
 In Home Assistant you'll find an **XPENG Vehicle** device with all sensors plus a **Refresh** button.
+
+### Dual-broker mode in this fork
+
+This fork adds an optional secondary MQTT broker. It is intended for homes with two independent Home Assistant installations: for example, a primary-home broker on the local LAN and a country-house broker reachable through Tailscale. Credentials for both brokers stay in Android encrypted preferences. Publishing is isolated per broker, so a temporary outage on one broker does not block updates to the other. The Refresh button is listened for on both configured brokers.
+
+For the current homelab layout, the intended endpoints are:
+
+- primary home: `192.168.50.124:1883` when the collector phone is on the home LAN;
+- country house: `100.118.33.13:1883` over Tailscale.
+
+Both Mosquitto brokers require authentication. Do not enable anonymous access just for this bridge.
 
 ## Privacy & security
 
